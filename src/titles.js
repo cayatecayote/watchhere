@@ -7,7 +7,7 @@ const FOUND_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const UNKNOWN_TTL_MS = 10 * 60 * 1000;
 
 const IMDB_ID = /^tt\d+$/;
-const TMDB_ID = /^tmdb:(\d+)$/;
+const TMDB_ID = /^tmdb:(\d+)(?::\d+:\d+)?$/;
 
 /**
  * @typedef {{
@@ -87,7 +87,7 @@ export function createTitles({ http, cache, tmdbKey = '' }) {
       if (type !== 'movie' && type !== 'series') return null;
       if (typeof id !== 'string') return null;
 
-      // Stremio episode ids look like `tt7678620:2:5`; the show is the first part.
+      // Stremio episode ids look like `tt7678620:2:5` (or `tmdb:82728:2:5`); the show is the first part.
       const [head] = id.split(':');
       if (IMDB_ID.test(head)) return fromCinemeta(type, head);
 

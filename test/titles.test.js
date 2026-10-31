@@ -90,6 +90,20 @@ test('tmdb series uses the tv endpoint', async () => {
   assert.match(fetchImpl.calls[0].url, /\/3\/tv\/82728\/external_ids\?api_key=k3y$/);
 });
 
+test('tmdb series episode id resolves to its show through TMDB', async () => {
+  const { titles, fetchImpl } = setup(
+    ({ url }) => (url.includes('/3/tv/82728/') ? { imdb_id: 'tt7678620' } : cinemeta({ url })),
+    { tmdbKey: 'k3y' },
+  );
+  const title = await titles.resolve({ type: 'series', id: 'tmdb:82728:2:5' });
+  assert.equal(title.imdbId, 'tt7678620');
+  assert.equal(title.objectType, 'SHOW');
+  assert.equal(
+    fetchImpl.calls[0].url,
+    'https://api.themoviedb.org/3/tv/82728/external_ids?api_key=k3y',
+  );
+});
+
 test('tmdb id without an imdb id answers null', async () => {
   const { titles } = setup(() => ({ imdb_id: null }), { tmdbKey: 'k3y' });
   assert.equal(await titles.resolve({ type: 'movie', id: 'tmdb:1' }), null);
