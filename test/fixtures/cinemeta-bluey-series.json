@@ -1,0 +1,13 @@
+{
+  "meta": {
+    "id": "tt7678620",
+    "type": "series",
+    "name": "Bluey",
+    "videos": [
+      { "id": "tt7678620:0:6", "season": 0, "episode": 6, "number": 6, "released": "2019-10-01T08:00:00.000Z", "firstAired": "2019-10-01T08:00:00.000Z" },
+      { "id": "tt7678620:1:1", "season": 1, "episode": 1, "number": 1, "released": "2018-10-01T08:00:00.000Z", "firstAired": "2018-10-01T08:00:00.000Z" },
+      { "id": "tt7678620:2:5", "season": 2, "episode": 5, "number": 5, "released": "2020-03-21T08:00:00.000Z", "firstAired": "2020-03-21T08:00:00.000Z" },
+      { "id": "tt7678620:3:52", "season": 3, "episode": 52, "number": 52 }
+    ]
+  }
+}
