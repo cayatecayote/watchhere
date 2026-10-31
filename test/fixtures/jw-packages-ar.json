@@ -1,0 +1,49 @@
+{
+  "data": {
+    "packages": [
+      {
+        "technicalName": "netflix",
+        "clearName": "Netflix",
+        "monetizationTypes": [
+          "FLATRATE"
+        ]
+      },
+      {
+        "technicalName": "itunes",
+        "clearName": "Apple TV",
+        "monetizationTypes": [
+          "RENT",
+          "BUY"
+        ]
+      },
+      {
+        "technicalName": "plutotv",
+        "clearName": "Pluto TV",
+        "monetizationTypes": [
+          "ADS"
+        ]
+      },
+      {
+        "technicalName": "tubitv",
+        "clearName": "Tubi TV",
+        "monetizationTypes": [
+          "FREE",
+          "ADS"
+        ]
+      },
+      {
+        "technicalName": "mubi",
+        "clearName": "MUBI",
+        "monetizationTypes": [
+          "FLATRATE",
+          "RENT"
+        ]
+      },
+      {
+        "technicalName": "ghost",
+        "clearName": "Ghost",
+        "monetizationTypes": []
+      }
+    ]
+  }
+}
