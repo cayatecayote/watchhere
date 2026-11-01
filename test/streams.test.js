@@ -269,3 +269,35 @@ test('malformed JustWatch data never throws', async () => {
   });
   assert.deepEqual(names(await getStreams(movie, user(['disneyplus']))), ['Disney+']);
 });
+
+test('lookup reports upstream=ok, fail or timeout alongside the rows', async () => {
+  const stream = (opts) => createStreams({
+    titles: { resolve: async () => MOVIE },
+    justWatch: opts.justWatch,
+    timeoutMs: opts.timeoutMs,
+  });
+  const ok = await stream({ justWatch: { findTitle: async () => ({ offers: [disney], seasons: [] }) } }).lookup(
+    movie,
+    user(['disneyplus']),
+  );
+  assert.equal(ok.upstream, 'ok');
+  assert.equal(ok.rows.length, 1);
+
+  const none = await stream({ justWatch: { findTitle: async () => null } }).lookup(movie, user(['disneyplus']));
+  assert.deepEqual(none, { rows: [], upstream: 'ok' });
+
+  const boom = await stream({
+    justWatch: {
+      findTitle: async () => {
+        throw new Error('secret?api_key=SECRET');
+      },
+    },
+  }).lookup(movie, user(['disneyplus']));
+  assert.deepEqual(boom, { rows: [], upstream: 'fail' });
+
+  const slow = await stream({ justWatch: { findTitle: () => new Promise(() => {}) }, timeoutMs: 20 }).lookup(
+    movie,
+    user(['disneyplus']),
+  );
+  assert.deepEqual(slow, { rows: [], upstream: 'timeout' });
+});

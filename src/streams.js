@@ -6,6 +6,7 @@ const COUNTED = new Set(['FLATRATE', 'FREE', 'ADS']);
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 const EPISODE_SUFFIX = /:(\d+):(\d+)$/;
+const TIMED_OUT = Symbol('timed out');
 
 /**
  * @typedef {import('./userConfig.js').UserConfig} UserConfig
@@ -88,26 +89,38 @@ export function createStreams({ titles, justWatch, timeoutMs = 5000 }) {
     return [...plays, ...pages];
   }
 
+  /**
+   * Never throws: any failure, or running past `timeoutMs`, answers no rows
+   * and says so in `upstream` ('fail' | 'timeout'; 'ok' otherwise). Error
+   * messages are dropped on purpose: they can carry URLs with API keys.
+   * @param {{ type: string, id: string, season?: number, episode?: number }} req
+   * @param {UserConfig} user
+   * @returns {Promise<{ rows: Stream[], upstream: 'ok' | 'fail' | 'timeout' }>}
+   */
+  async function lookup(req, user) {
+    let timer;
+    const deadline = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(TIMED_OUT), timeoutMs);
+    });
+    try {
+      const rows = await Promise.race([build(req, user), deadline]);
+      return rows === TIMED_OUT ? { rows: [], upstream: 'timeout' } : { rows, upstream: 'ok' };
+    } catch {
+      return { rows: [], upstream: 'fail' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return {
+    lookup,
     /**
      * Never throws: any failure, or running past `timeoutMs`, answers `[]`.
      * @param {{ type: string, id: string, season?: number, episode?: number }} req
      * @param {UserConfig} user
      * @returns {Promise<Stream[]>}
      */
-    async getStreams(req, user) {
-      let timer;
-      const deadline = new Promise((resolve) => {
-        timer = setTimeout(() => resolve([]), timeoutMs);
-      });
-      try {
-        return await Promise.race([build(req, user), deadline]);
-      } catch {
-        return [];
-      } finally {
-        clearTimeout(timer);
-      }
-    },
+    getStreams: async (req, user) => (await lookup(req, user)).rows,
   };
 }
 

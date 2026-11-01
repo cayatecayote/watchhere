@@ -1,7 +1,9 @@
 /**
  * Countries offered on the configure page. JustWatch has no public country
- * query (introspection is off), so the list is static; a country missing here
- * can still be used by hand-editing the install URL.
+ * query (introspection is off), so the list is static. It is also the allow-list:
+ * the server answers 404 / 400 for any other country, so a public instance
+ * cannot be made to ask JustWatch about arbitrary countries. To support one
+ * more, add it here.
  * @type {{ code: string, en: string, es: string }[]}
  */
 export const COUNTRIES = [

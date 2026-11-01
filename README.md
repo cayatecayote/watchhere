@@ -85,7 +85,8 @@ http://<your-server>:7020/ar-es-netflix,disneyplus,max/manifest.json
 ```
 
 There is no server-side state, so every Nuvio profile can have its own link (for instance, the kids' profile without
-HBO Max). An invalid configuration segment is a 404, never a silent default.
+HBO Max). An invalid configuration segment is a 404, never a silent default, and so is a country that is not in the
+list on the configure page (`src/countries.js`).
 
 ### Nuvio
 
@@ -100,6 +101,11 @@ hand (it still opens the title in the right app).
 
 Press "Install in Stremio" on the configure page, or paste the link in the add-on catalog. In Stremio the WatchHere
 row is tappable: it opens the title in the streaming app.
+
+**Stremio only installs add-ons served over https** (the one exception is `localhost`). A plain
+`http://192.168.x.x:7020` link will not install, so put WatchHere behind a reverse proxy with a certificate (Caddy,
+nginx, Traefik) or a tunnel (Cloudflare Tunnel, Tailscale Funnel) and open the configure page from that https address:
+the install link is built from the address you opened it on.
 
 Disney+ and Netflix always ask for a profile on a cold start; nothing can skip that.
 
@@ -242,7 +248,8 @@ http://<tu-servidor>:7020/ar-es-netflix,disneyplus,max/manifest.json
 ```
 
 No hay estado en el servidor, así que cada perfil de Nuvio puede tener su propio link (por ejemplo, el perfil de los
-chicos sin HBO Max). Un segmento de configuración inválido da 404, nunca un valor por defecto en silencio.
+chicos sin HBO Max). Un segmento de configuración inválido da 404, nunca un valor por defecto en silencio, y lo mismo
+un país que no está en la lista de la página de configuración (`src/countries.js`).
 
 ### Nuvio
 
@@ -257,6 +264,11 @@ WatchHere es una fila común que tocás a mano (igual abre el título en la app 
 
 Apretá "Instalar en Stremio" en la página de configuración, o pegá el link en el catálogo de add-ons. En Stremio la
 fila de WatchHere se toca y abre el título en la app de streaming.
+
+**Stremio solo instala add-ons servidos por https** (la única excepción es `localhost`). Un link
+`http://192.168.x.x:7020` pelado no se instala, así que poné WatchHere detrás de un reverse proxy con certificado
+(Caddy, nginx, Traefik) o de un túnel (Cloudflare Tunnel, Tailscale Funnel) y abrí la página de configuración desde esa
+dirección https: el link de instalación se arma con la dirección desde la que la abriste.
 
 Disney+ y Netflix siempre piden el perfil en un arranque en frío; eso no lo puede saltear nadie.
 

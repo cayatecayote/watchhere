@@ -17,9 +17,12 @@ function quietLogger() {
 async function start({ streams, justWatch, page, logger = quietLogger() } = {}) {
   const calls = { streams: [], packages: [], render: [] };
   const fakeStreams = streams ?? {
-    async getStreams(req, user) {
+    async lookup(req, user) {
       calls.streams.push({ req, user });
-      return [{ name: 'Disney+', title: 'Play on Disney+', externalUrl: 'https://x.test/play/1' }];
+      return {
+        rows: [{ name: 'Disney+', title: 'Play on Disney+', externalUrl: 'https://x.test/play/1' }],
+        upstream: 'ok',
+      };
     },
   };
   const fakeJw = justWatch ?? {
@@ -121,6 +124,9 @@ test('invalid segment is 404 on manifest, stream and configure', async () => {
       '/bogus/stream/movie/tt2380307.json',
       '/bogus/configure',
       '/ar-xx-netflix/manifest.json',
+      '/zz-en-netflix/manifest.json',
+      '/zz-en-netflix/stream/movie/tt2380307.json',
+      '/zz-en-netflix/configure',
     ]) {
       const r = await fetch(s.base + path);
       assert.equal(r.status, 404, path);
@@ -183,7 +189,7 @@ test('series ids: season and episode are Numbers; %3A is decoded', async () => {
 test('a throwing streams still answers 200 {streams:[]}', async () => {
   const s = await start({
     streams: {
-      async getStreams() {
+      async lookup() {
         throw new Error('boom?api_key=SECRET');
       },
     },
@@ -193,6 +199,7 @@ test('a throwing streams still answers 200 {streams:[]}', async () => {
     assert.equal(r.status, 200);
     assert.deepEqual(await r.json(), { streams: [] });
     assert.ok(!s.logger.lines.join('\n').includes('SECRET'));
+    assert.match(s.logger.lines[0], /upstream=fail/);
   } finally {
     await s.close();
   }
@@ -235,6 +242,9 @@ test('/api/packages passes the country', async () => {
     assert.deepEqual(s.calls.packages, ['us']);
     assert.equal((await fetch(`${s.base}/api/packages?country=zzz`)).status, 400);
     assert.equal((await fetch(`${s.base}/api/packages`)).status, 400);
+    assert.equal((await fetch(`${s.base}/api/packages?country=zz`)).status, 400); // 2 letters but unknown
+    assert.equal((await fetch(`${s.base}/api/packages?country=AR`)).status, 200);
+    assert.deepEqual(s.calls.packages, ['us', 'ar']);
   } finally {
     await s.close();
   }
@@ -311,6 +321,43 @@ test('configure is 404 when no page is wired', async () => {
   try {
     assert.equal((await fetch(`${s.base}/configure`)).status, 404);
     assert.equal((await fetch(`${s.base}/ar-es-netflix/configure`)).status, 404);
+  } finally {
+    await s.close();
+  }
+});
+
+test('log line carries upstream=ok, fail or timeout and never an error message', async () => {
+  for (const upstream of ['ok', 'fail', 'timeout']) {
+    const s = await start({ streams: { async lookup() { return { rows: [], upstream }; } } });
+    try {
+      await fetch(`${s.base}/stream/movie/tt2380307.json`);
+      assert.equal(s.logger.lines.length, 1);
+      assert.ok(s.logger.lines[0].includes(`upstream=${upstream} `), s.logger.lines[0]);
+    } finally {
+      await s.close();
+    }
+  }
+});
+
+test('every response says nosniff; only the configure page carries a CSP', async () => {
+  const s = await start();
+  try {
+    for (const path of ['/manifest.json', '/health', '/nope', '/stream/movie/tt1.json', '/api/packages?country=zz', '/configure']) {
+      const r = await fetch(s.base + path);
+      assert.equal(r.headers.get('x-content-type-options'), 'nosniff', path);
+      if (path !== '/configure') assert.equal(r.headers.get('content-security-policy'), null, path);
+    }
+    const o = await fetch(`${s.base}/manifest.json`, { method: 'OPTIONS' });
+    assert.equal(o.headers.get('x-content-type-options'), 'nosniff');
+
+    const csp = (await fetch(`${s.base}/configure`)).headers.get('content-security-policy');
+    assert.match(csp, /default-src 'self'/);
+    assert.match(csp, /script-src 'self' 'unsafe-inline'/);
+    assert.match(csp, /style-src 'self' 'unsafe-inline'/);
+    assert.match(csp, /img-src https:\/\/images\.justwatch\.com data:/);
+    assert.match(csp, /connect-src 'self'/);
+    assert.match(csp, /frame-ancestors 'none'/);
+    assert.match(csp, /base-uri 'none'/);
   } finally {
     await s.close();
   }
