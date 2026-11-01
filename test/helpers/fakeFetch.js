@@ -65,3 +65,32 @@ export function offer(technicalName, monetizationType = 'FLATRATE', extra = {}) 
 /** A `popularTitles` answer holding the given nodes. */
 export const titlesResponse = (...nodes) =>
   gql({ popularTitles: { edges: nodes.map((node) => ({ node })) } });
+
+/**
+ * A fake JustWatch: answers the light search with the entries' ids and IMDb
+ * ids, and the `node(id:)` detail query with that entry's `detail`.
+ *
+ * entries: `{ id, imdbId, objectType = 'MOVIE', terms?: string[], detail }`.
+ * An entry with `terms` only shows up for those search terms.
+ */
+export function createFakeJustWatch(entries) {
+  return ({ body }) => {
+    if (body.query.includes('popularTitles')) {
+      const term = body.variables.filter.searchQuery;
+      return titlesResponse(
+        ...entries
+          .filter((e) => !e.terms || e.terms.includes(term))
+          .map((e) => ({
+            id: e.id,
+            objectType: e.objectType ?? 'MOVIE',
+            content: { externalIds: { imdbId: e.imdbId } },
+          })),
+      );
+    }
+    if (body.query.includes('node(id')) {
+      const entry = entries.find((e) => e.id === body.variables.id);
+      return gql({ node: entry ? entry.detail : null });
+    }
+    throw new Error(`unexpected query: ${body.query.slice(0, 40)}`);
+  };
+}

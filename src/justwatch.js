@@ -4,11 +4,19 @@ const KEEP = new Set(['FLATRATE', 'FREE', 'ADS']);
 const OFFER_FIELDS =
   'monetizationType standardWebURL deeplinkURL(platform: ANDROID_TV) package { technicalName clearName }';
 
-const TITLES_QUERY = `query($country: Country!, $first: Int!, $filter: TitleFilter) {
+// JustWatch rejects one big query (complexity 668450 vs a 350000 limit), so a
+// lookup is two steps: a light search to find the node, then a detail query
+// for that single node.
+const SEARCH_QUERY = `query($country: Country!, $first: Int!, $filter: TitleFilter) {
   popularTitles(country: $country, first: $first, filter: $filter) { edges { node {
-    objectType
+    id objectType
     content(country: $country, language: en) { externalIds { imdbId } }
-    offers(country: $country, platform: WEB) { ${OFFER_FIELDS} }
+  } } }
+}`;
+
+const DETAIL_QUERY = `query($id: ID!, $country: Country!) {
+  node(id: $id) {
+    ... on MovieOrShow { offers(country: $country, platform: WEB) { ${OFFER_FIELDS} } }
     ... on Show { seasons {
       content(country: $country, language: en) { seasonNumber }
       episodes {
@@ -16,7 +24,7 @@ const TITLES_QUERY = `query($country: Country!, $first: Int!, $filter: TitleFilt
         offers(country: $country, platform: WEB) { ${OFFER_FIELDS} }
       }
     } }
-  } } }
+  }
 }`;
 
 const PACKAGES_QUERY =
@@ -80,7 +88,7 @@ export function createJustWatch({ http, cache, ttl = {} }) {
     if (cached !== undefined) return /** @type {JwTitle | null} */ (cached);
 
     for (const term of terms) {
-      const data = await query(TITLES_QUERY, {
+      const data = await query(SEARCH_QUERY, {
         country: cc,
         first: 10,
         filter: { searchQuery: term, objectTypes: [objectType] },
@@ -88,7 +96,8 @@ export function createJustWatch({ http, cache, ttl = {} }) {
       const edges = data.popularTitles?.edges ?? [];
       const match = edges.find((e) => e?.node?.content?.externalIds?.imdbId === imdbId);
       if (match) {
-        const title = toTitle(match.node);
+        const detail = await query(DETAIL_QUERY, { id: match.node.id, country: cc });
+        const title = toTitle(detail.node ?? {});
         cache.set(key, title, hitTtl);
         return title;
       }

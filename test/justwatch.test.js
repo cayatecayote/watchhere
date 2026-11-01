@@ -4,16 +4,21 @@ import { readFileSync } from 'node:fs';
 import { createHttp } from '../src/http.js';
 import { createCache } from '../src/cache.js';
 import { createJustWatch } from '../src/justwatch.js';
-import { createFakeFetch, gql, offer, titlesResponse } from './helpers/fakeFetch.js';
+import { createFakeFetch, createFakeJustWatch, gql, offer, titlesResponse } from './helpers/fakeFetch.js';
 
 const fixture = (name) =>
   JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 
-const lionKing = (imdbId, offers) => ({
+const lionKing = (id, imdbId, offers, extra = {}) => ({
+  id,
+  imdbId,
   objectType: 'MOVIE',
-  content: { title: 'The Lion King', externalIds: { imdbId } },
-  offers,
+  detail: { offers },
+  ...extra,
 });
+
+const searchCalls = (fetchImpl) => fetchImpl.calls.filter((c) => c.body.query.includes('popularTitles'));
+const detailCalls = (fetchImpl) => fetchImpl.calls.filter((c) => c.body.query.includes('node(id'));
 
 function setup(handler, { delayMs, timeoutMs = 1000, now } = {}) {
   const fetchImpl = createFakeFetch(handler, { delayMs });
@@ -24,11 +29,11 @@ function setup(handler, { delayMs, timeoutMs = 1000, now } = {}) {
 }
 
 test('picks the result whose IMDb id matches, not the first', async () => {
-  const { jw } = setup(() =>
-    titlesResponse(
-      lionKing('tt0110357', [offer('disneyplus')]),
-      lionKing('tt6105098', [offer('netflix'), offer('max')]),
-    ),
+  const { jw } = setup(
+    createFakeJustWatch([
+      lionKing('tm1', 'tt0110357', [offer('disneyplus')]),
+      lionKing('tm2', 'tt6105098', [offer('netflix'), offer('max')]),
+    ]),
   );
   const title = await jw.findTitle({
     imdbId: 'tt6105098',
@@ -43,11 +48,44 @@ test('picks the result whose IMDb id matches, not the first', async () => {
   assert.deepEqual(title.seasons, []);
 });
 
+test('the detail query is only sent for the matched node id', async () => {
+  const { jw, fetchImpl } = setup(
+    createFakeJustWatch([
+      lionKing('tm1', 'tt0110357', [offer('disneyplus')]),
+      lionKing('tm2', 'tt6105098', [offer('netflix')]),
+    ]),
+  );
+  await jw.findTitle({ imdbId: 'tt6105098', objectType: 'MOVIE', terms: ['The Lion King'], country: 'ar' });
+  assert.equal(searchCalls(fetchImpl).length, 1);
+  const details = detailCalls(fetchImpl);
+  assert.equal(details.length, 1);
+  assert.deepEqual(details[0].body.variables, { id: 'tm2', country: 'AR' });
+  assert.equal(details[0].url, 'https://apis.justwatch.com/graphql');
+  assert.equal(details[0].method, 'POST');
+});
+
+test('the search stays light: no offers, seasons or episodes', async () => {
+  const { jw, fetchImpl } = setup(createFakeJustWatch([]));
+  await jw.findTitle({ imdbId: 'tt1', objectType: 'SHOW', terms: ['x'], country: 'AR' });
+  const { query } = searchCalls(fetchImpl)[0].body;
+  assert.doesNotMatch(query, /offers|seasons|episodes/);
+  assert.match(query, /\bid\b/);
+});
+
+test('a miss sends no detail request', async () => {
+  const { jw, fetchImpl } = setup(createFakeJustWatch([lionKing('tm1', 'tt9999999', [offer('netflix')])]));
+  const title = await jw.findTitle({ imdbId: 'tt1', objectType: 'MOVIE', terms: ['a', 'b'], country: 'AR' });
+  assert.equal(title, null);
+  assert.equal(searchCalls(fetchImpl).length, 2);
+  assert.equal(detailCalls(fetchImpl).length, 0);
+});
+
 test('tries the next search term when the first finds no match', async () => {
-  const { jw, fetchImpl } = setup(({ body }) =>
-    body.variables.filter.searchQuery === 'Der Konig der Lowen'
-      ? titlesResponse(lionKing('tt0110357', [offer('disneyplus')]))
-      : titlesResponse(lionKing('tt9999999', [offer('netflix')])),
+  const { jw, fetchImpl } = setup(
+    createFakeJustWatch([
+      lionKing('tm9', 'tt9999999', [offer('netflix')], { terms: ['The Lion King'] }),
+      lionKing('tm1', 'tt0110357', [offer('disneyplus')], { terms: ['Der Konig der Lowen'] }),
+    ]),
   );
   const title = await jw.findTitle({
     imdbId: 'tt0110357',
@@ -57,12 +95,13 @@ test('tries the next search term when the first finds no match', async () => {
   });
   assert.equal(title.offers[0].package.technicalName, 'disneyplus');
   assert.deepEqual(
-    fetchImpl.calls.map((c) => c.body.variables.filter.searchQuery),
+    searchCalls(fetchImpl).map((c) => c.body.variables.filter.searchQuery),
     ['The Lion King', 'Der Konig der Lowen'],
   );
+  assert.equal(detailCalls(fetchImpl).length, 1);
 });
 
-test('sends first: 10, the object type filter and a POST to the JustWatch endpoint', async () => {
+test('the search sends first: 10, the object type filter and a POST to the JustWatch endpoint', async () => {
   const { jw, fetchImpl } = setup(() => titlesResponse());
   await jw.findTitle({ imdbId: 'tt1', objectType: 'SHOW', terms: ['x'], country: 'AR' });
   const [call] = fetchImpl.calls;
@@ -76,7 +115,9 @@ test('sends first: 10, the object type filter and a POST to the JustWatch endpoi
 });
 
 test('maps seasons and episodes with their offers and release date', async () => {
-  const { jw } = setup(() => fixture('jw-bluey-show.json'));
+  const { jw } = setup(({ body }) =>
+    body.query.includes('popularTitles') ? fixture('jw-search-bluey.json') : fixture('jw-detail-bluey.json'),
+  );
   const title = await jw.findTitle({
     imdbId: 'tt7678620',
     objectType: 'SHOW',
@@ -98,14 +139,31 @@ test('maps seasons and episodes with their offers and release date', async () =>
   assert.equal(ep.offers[0].package.clearName, 'Disney Plus');
 });
 
+test('the detail request asks for the matched Bluey node by id', async () => {
+  const { jw, fetchImpl } = setup(({ body }) =>
+    body.query.includes('popularTitles') ? fixture('jw-search-bluey.json') : fixture('jw-detail-bluey.json'),
+  );
+  await jw.findTitle({ imdbId: 'tt7678620', objectType: 'SHOW', terms: ['Bluey'], country: 'AR' });
+  assert.deepEqual(detailCalls(fetchImpl).map((c) => c.body.variables.id), ['ts84270']);
+  assert.match(detailCalls(fetchImpl)[0].body.query, /\.\.\. on MovieOrShow/);
+  assert.match(detailCalls(fetchImpl)[0].body.query, /\.\.\. on Show/);
+});
+
 test('a missing release date maps to null and missing offers to an empty list', async () => {
-  const { jw } = setup(() =>
-    titlesResponse({
-      objectType: 'SHOW',
-      content: { externalIds: { imdbId: 'tt1' } },
-      offers: null,
-      seasons: [{ content: { seasonNumber: 1 }, episodes: [{ content: { episodeNumber: 1, originalReleaseDate: null }, offers: null }] }],
-    }),
+  const { jw } = setup(
+    createFakeJustWatch([
+      {
+        id: 'ts1',
+        imdbId: 'tt1',
+        objectType: 'SHOW',
+        detail: {
+          offers: null,
+          seasons: [
+            { content: { seasonNumber: 1 }, episodes: [{ content: { episodeNumber: 1, originalReleaseDate: null }, offers: null }] },
+          ],
+        },
+      },
+    ]),
   );
   const title = await jw.findTitle({ imdbId: 'tt1', objectType: 'SHOW', terms: ['x'], country: 'AR' });
   assert.deepEqual(title.offers, []);
@@ -113,55 +171,51 @@ test('a missing release date maps to null and missing offers to an empty list', 
 });
 
 test('caches a hit and a miss per country and type', async () => {
-  const { jw, fetchImpl } = setup(({ body }) =>
-    body.variables.filter.searchQuery === 'known'
-      ? titlesResponse(lionKing('tt1', [offer('netflix')]))
-      : titlesResponse(),
+  const { jw, fetchImpl } = setup(
+    createFakeJustWatch([lionKing('tm1', 'tt1', [offer('netflix')], { terms: ['known'] })]),
   );
   const hit = { imdbId: 'tt1', objectType: 'MOVIE', terms: ['known'], country: 'AR' };
   const miss = { imdbId: 'tt2', objectType: 'MOVIE', terms: ['unknown'], country: 'AR' };
 
   await jw.findTitle(hit);
   await jw.findTitle(hit);
-  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(fetchImpl.calls.length, 2); // search + detail, once
 
   assert.equal(await jw.findTitle(miss), null);
   assert.equal(await jw.findTitle(miss), null);
-  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(fetchImpl.calls.length, 3);
 
   await jw.findTitle({ ...hit, country: 'US' });
-  assert.equal(fetchImpl.calls.length, 3);
+  assert.equal(fetchImpl.calls.length, 5);
   await jw.findTitle({ ...hit, objectType: 'SHOW' });
-  assert.equal(fetchImpl.calls.length, 4);
+  assert.equal(fetchImpl.calls.length, 7);
 });
 
 test('hits live 12 hours and misses 3 hours', async () => {
   let t = 0;
   const { jw, fetchImpl } = setup(
-    ({ body }) =>
-      body.variables.filter.searchQuery === 'known'
-        ? titlesResponse(lionKing('tt1', [offer('netflix')]))
-        : titlesResponse(),
+    createFakeJustWatch([lionKing('tm1', 'tt1', [offer('netflix')], { terms: ['known'] })]),
     { now: () => t },
   );
   const hit = { imdbId: 'tt1', objectType: 'MOVIE', terms: ['known'], country: 'AR' };
   const miss = { imdbId: 'tt2', objectType: 'MOVIE', terms: ['unknown'], country: 'AR' };
   await jw.findTitle(hit);
   await jw.findTitle(miss);
+  assert.equal(fetchImpl.calls.length, 3);
 
   t = 3 * 3600e3 - 1;
   await jw.findTitle(hit);
   await jw.findTitle(miss);
-  assert.equal(fetchImpl.calls.length, 2);
+  assert.equal(fetchImpl.calls.length, 3);
 
   t = 3 * 3600e3 + 1; // miss expired, hit still fresh
   await jw.findTitle(hit);
   await jw.findTitle(miss);
-  assert.equal(fetchImpl.calls.length, 3);
+  assert.equal(fetchImpl.calls.length, 4);
 
   t = 12 * 3600e3 + 1;
   await jw.findTitle(hit);
-  assert.equal(fetchImpl.calls.length, 4);
+  assert.equal(fetchImpl.calls.length, 6);
 });
 
 test('GraphQL errors and HTTP 503 throw', async () => {
@@ -175,6 +229,22 @@ test('GraphQL errors and HTTP 503 throw', async () => {
 
   const pk = setup(() => ({ errors: [{ message: 'boom' }] }));
   await assert.rejects(pk.jw.listPackages('AR'), /boom/);
+});
+
+test('a GraphQL error in the detail step throws and is not cached', async () => {
+  let fail = true;
+  const world = createFakeJustWatch([lionKing('tm1', 'tt1', [offer('netflix')])]);
+  const { jw, fetchImpl } = setup((req) =>
+    fail && req.body.query.includes('node(id')
+      ? { errors: [{ message: 'complexity 668450 exceeds 350000' }] }
+      : world(req),
+  );
+  const args = { imdbId: 'tt1', objectType: 'MOVIE', terms: ['x'], country: 'AR' };
+  await assert.rejects(jw.findTitle(args), /complexity/);
+  fail = false;
+  const title = await jw.findTitle(args);
+  assert.equal(title.offers[0].package.technicalName, 'netflix');
+  assert.equal(fetchImpl.calls.length, 4);
 });
 
 test('a failed lookup is not cached', async () => {
