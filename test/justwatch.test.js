@@ -278,10 +278,10 @@ test('sends the country upper-cased', async () => {
 test('listPackages keeps subscription and free services only', async () => {
   const { jw } = setup(() => fixture('jw-packages-ar.json'));
   assert.deepEqual(await jw.listPackages('AR'), [
-    { id: 'netflix', name: 'Netflix' },
-    { id: 'plutotv', name: 'Pluto TV' },
-    { id: 'tubitv', name: 'Tubi TV' },
-    { id: 'mubi', name: 'MUBI' },
+    { id: 'netflix', name: 'Netflix', icon: 'https://images.justwatch.com/icon/207360008/s100/netflix.png' },
+    { id: 'plutotv', name: 'Pluto TV', icon: 'https://images.justwatch.com/icon/1/s100/plutotv.png' },
+    { id: 'tubitv', name: 'Tubi TV', icon: null },
+    { id: 'mubi', name: 'MUBI', icon: null },
   ]);
 });
 
@@ -293,6 +293,7 @@ test('listPackages caches per country', async () => {
   await jw.listPackages('BR');
   assert.equal(fetchImpl.calls.length, 2);
   assert.match(fetchImpl.calls[0].body.query, /packages\(country: \$country, platform: WEB\)/);
+  assert.match(fetchImpl.calls[0].body.query, /icon\(profile: S100, format: PNG\)/);
 });
 
 // --- http and cache, the small layers underneath ---

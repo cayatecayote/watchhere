@@ -1,4 +1,5 @@
 const ENDPOINT = 'https://apis.justwatch.com/graphql';
+const ICON_HOST = 'https://images.justwatch.com';
 const KEEP = new Set(['FLATRATE', 'FREE', 'ADS']);
 
 const OFFER_FIELDS =
@@ -28,7 +29,7 @@ const DETAIL_QUERY = `query($id: ID!, $country: Country!) {
 }`;
 
 const PACKAGES_QUERY =
-  'query($country: Country!) { packages(country: $country, platform: WEB) { technicalName clearName monetizationTypes } }';
+  'query($country: Country!) { packages(country: $country, platform: WEB) { technicalName clearName monetizationTypes icon(profile: S100, format: PNG) } }';
 
 /**
  * @typedef {import('./links.js').JwOffer} JwOffer
@@ -109,18 +110,22 @@ export function createJustWatch({ http, cache, ttl = {} }) {
   /**
    * Streaming services in a country that carry subscription or free content.
    * @param {string} country
-   * @returns {Promise<{ id: string, name: string }[]>}
+   * @returns {Promise<{ id: string, name: string, icon: string | null }[]>}
    */
   async function listPackages(country) {
     const cc = country.toUpperCase();
     const key = `packages:${cc}`;
     const cached = cache.get(key);
-    if (cached !== undefined) return /** @type {{ id: string, name: string }[]} */ (cached);
+    if (cached !== undefined) return /** @type {{ id: string, name: string, icon: string | null }[]} */ (cached);
 
     const data = await query(PACKAGES_QUERY, { country: cc });
     const list = (data.packages ?? [])
       .filter((p) => (p.monetizationTypes ?? []).some((m) => KEEP.has(m)))
-      .map((p) => ({ id: p.technicalName, name: p.clearName }));
+      .map((p) => ({
+        id: p.technicalName,
+        name: p.clearName,
+        icon: typeof p.icon === 'string' && p.icon.startsWith('/') ? ICON_HOST + p.icon : null,
+      }));
     cache.set(key, list, packagesTtl);
     return list;
   }

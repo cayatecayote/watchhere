@@ -5,6 +5,7 @@ import { createCache } from './cache.js';
 import { createJustWatch } from './justwatch.js';
 import { createTitles } from './titles.js';
 import { createStreams } from './streams.js';
+import { createPage } from './page.js';
 import { createApp } from './server.js';
 
 const cfg = loadConfig(process.env);
@@ -15,8 +16,7 @@ const justWatch = createJustWatch({ http, cache });
 const titles = createTitles({ http, cache, tmdbKey: cfg.tmdbKey });
 const streams = createStreams({ titles, justWatch, timeoutMs: cfg.streamTimeoutMs });
 
-// The configure page arrives with its own module; until then /configure is a 404.
-const app = createApp({ streams, justWatch, page: null, cfg, logger: console });
+const app = createApp({ streams, justWatch, page: createPage(), cfg, logger: console });
 
 createServer(app).listen(cfg.port, () => {
   console.log(`WatchHere listening on :${cfg.port}`);

@@ -6,7 +6,8 @@
         "clearName": "Netflix",
         "monetizationTypes": [
           "FLATRATE"
-        ]
+        ],
+        "icon": "/icon/207360008/s100/netflix.png"
       },
       {
         "technicalName": "itunes",
@@ -21,7 +22,8 @@
         "clearName": "Pluto TV",
         "monetizationTypes": [
           "ADS"
-        ]
+        ],
+        "icon": "/icon/1/s100/plutotv.png"
       },
       {
         "technicalName": "tubitv",
