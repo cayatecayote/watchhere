@@ -17,6 +17,8 @@ const lionKing = (id, imdbId, offers, extra = {}) => ({
   ...extra,
 });
 
+const FAILURE_TTL = 2 * 60e3;
+
 const searchCalls = (fetchImpl) => fetchImpl.calls.filter((c) => c.body.query.includes('popularTitles'));
 const detailCalls = (fetchImpl) => fetchImpl.calls.filter((c) => c.body.query.includes('node(id'));
 
@@ -24,7 +26,7 @@ function setup(handler, { delayMs, timeoutMs = 1000, now } = {}) {
   const fetchImpl = createFakeFetch(handler, { delayMs });
   const http = createHttp({ fetchImpl, timeoutMs });
   const cache = createCache(now ? { now } : {});
-  const jw = createJustWatch({ http, cache });
+  const jw = createJustWatch({ http, cache, ...(now ? { now } : {}) });
   return { fetchImpl, jw, cache };
 }
 
@@ -231,28 +233,34 @@ test('GraphQL errors and HTTP 503 throw', async () => {
   await assert.rejects(pk.jw.listPackages('AR'), /boom/);
 });
 
-test('a GraphQL error in the detail step throws and is not cached', async () => {
+test('a GraphQL error in the detail step throws and is not cached as a hit', async () => {
   let fail = true;
+  let t = 0;
   const world = createFakeJustWatch([lionKing('tm1', 'tt1', [offer('netflix')])]);
-  const { jw, fetchImpl } = setup((req) =>
-    fail && req.body.query.includes('node(id')
-      ? { errors: [{ message: 'complexity 668450 exceeds 350000' }] }
-      : world(req),
+  const { jw, fetchImpl } = setup(
+    (req) =>
+      fail && req.body.query.includes('node(id')
+        ? { errors: [{ message: 'complexity 668450 exceeds 350000' }] }
+        : world(req),
+    { now: () => t },
   );
   const args = { imdbId: 'tt1', objectType: 'MOVIE', terms: ['x'], country: 'AR' };
   await assert.rejects(jw.findTitle(args), /complexity/);
   fail = false;
+  t = FAILURE_TTL + 1;
   const title = await jw.findTitle(args);
   assert.equal(title.offers[0].package.technicalName, 'netflix');
   assert.equal(fetchImpl.calls.length, 4);
 });
 
-test('a failed lookup is not cached', async () => {
+test('a failed lookup is not cached as a hit or a miss', async () => {
   let fail = true;
-  const { jw, fetchImpl } = setup(() => (fail ? { status: 503, json: {} } : titlesResponse()));
+  let t = 0;
+  const { jw, fetchImpl } = setup(() => (fail ? { status: 503, json: {} } : titlesResponse()), { now: () => t });
   const args = { imdbId: 'tt1', objectType: 'MOVIE', terms: ['x'], country: 'AR' };
   await assert.rejects(jw.findTitle(args));
   fail = false;
+  t = FAILURE_TTL + 1;
   assert.equal(await jw.findTitle(args), null);
   assert.equal(fetchImpl.calls.length, 2);
 });
@@ -349,4 +357,207 @@ test('createCache evicts the oldest entry past maxEntries', () => {
   assert.equal(cache.get('a'), undefined);
   assert.equal(cache.get('b'), 2);
   assert.equal(cache.get('c'), 3);
+});
+
+// --- production hardening: failure cache, concurrency cap, dedupe, memory ---
+
+/** fetch wrapper that records how many requests are in flight at once. */
+function countingFetch(handler, delayMs) {
+  const inner = createFakeFetch(handler, { delayMs });
+  const stats = { active: 0, max: 0 };
+  async function fetchImpl(url, init) {
+    stats.active++;
+    stats.max = Math.max(stats.max, stats.active);
+    try {
+      return await inner(url, init);
+    } finally {
+      stats.active--;
+    }
+  }
+  fetchImpl.calls = inner.calls;
+  return { fetchImpl, stats };
+}
+
+const lookup = (imdbId, extra = {}) => ({ imdbId, objectType: 'MOVIE', terms: ['x'], country: 'AR', ...extra });
+
+test('a failed findTitle is cached for 2 minutes: the repeat throws without a fetch', async () => {
+  let t = 0;
+  const { jw, fetchImpl } = setup(() => ({ status: 503, json: {} }), { now: () => t });
+  await assert.rejects(jw.findTitle(lookup('tt1')), /503/);
+  assert.equal(fetchImpl.calls.length, 1);
+
+  t = FAILURE_TTL - 1;
+  await assert.rejects(jw.findTitle(lookup('tt1')), /503/);
+  assert.equal(fetchImpl.calls.length, 1);
+
+  await assert.rejects(jw.findTitle(lookup('tt2')), /503/); // another title still goes upstream
+  assert.equal(fetchImpl.calls.length, 2);
+
+  t = FAILURE_TTL + 1;
+  await assert.rejects(jw.findTitle(lookup('tt1')), /503/);
+  assert.equal(fetchImpl.calls.length, 3);
+});
+
+test('a timed-out findTitle is cached as a failure too', async () => {
+  const { jw, fetchImpl } = setup(() => titlesResponse(), { delayMs: 200, timeoutMs: 20 });
+  await assert.rejects(jw.findTitle(lookup('tt1')), /timed out/);
+  await assert.rejects(jw.findTitle(lookup('tt1')), /timed out/);
+  assert.equal(fetchImpl.calls.length, 1);
+});
+
+test('a failed listPackages is cached for 2 minutes', async () => {
+  let t = 0;
+  const { jw, fetchImpl } = setup(() => ({ status: 503, json: {} }), { now: () => t });
+  await assert.rejects(jw.listPackages('AR'), /503/);
+  t = FAILURE_TTL - 1;
+  await assert.rejects(jw.listPackages('ar'), /503/);
+  assert.equal(fetchImpl.calls.length, 1);
+  await assert.rejects(jw.listPackages('BR'), /503/);
+  assert.equal(fetchImpl.calls.length, 2);
+  t = FAILURE_TTL + 1;
+  await assert.rejects(jw.listPackages('AR'), /503/);
+  assert.equal(fetchImpl.calls.length, 3);
+});
+
+test('never more than 4 JustWatch requests in flight', async () => {
+  const { fetchImpl, stats } = countingFetch(() => titlesResponse(), 20);
+  const jw = createJustWatch({ http: createHttp({ fetchImpl, timeoutMs: 1000 }), cache: createCache() });
+  const results = await Promise.all(Array.from({ length: 10 }, (_, i) => jw.findTitle(lookup(`tt${i}`))));
+  assert.equal(results.length, 10);
+  assert.equal(fetchImpl.calls.length, 10);
+  assert.equal(stats.max, 4);
+});
+
+test('the concurrency slot is released when a request fails', async () => {
+  const { fetchImpl, stats } = countingFetch(() => ({ status: 503, json: {} }), 5);
+  const jw = createJustWatch({ http: createHttp({ fetchImpl, timeoutMs: 1000 }), cache: createCache() });
+  const settled = await Promise.allSettled(Array.from({ length: 9 }, (_, i) => jw.findTitle(lookup(`tt${i}`))));
+  assert.equal(settled.filter((r) => r.status === 'rejected').length, 9);
+  assert.equal(fetchImpl.calls.length, 9);
+  assert.ok(stats.max <= 4);
+});
+
+test('5 parallel identical findTitle calls share one search and one detail fetch', async () => {
+  const { fetchImpl, stats } = countingFetch(
+    createFakeJustWatch([lionKing('tm1', 'tt1', [offer('netflix')], { terms: ['x'] })]),
+    20,
+  );
+  const jw = createJustWatch({ http: createHttp({ fetchImpl, timeoutMs: 1000 }), cache: createCache() });
+  const all = await Promise.all(Array.from({ length: 5 }, () => jw.findTitle(lookup('tt1'))));
+  assert.equal(searchCalls(fetchImpl).length, 1);
+  assert.equal(detailCalls(fetchImpl).length, 1);
+  assert.equal(stats.max, 1);
+  for (const title of all) assert.equal(title.offers[0].package.technicalName, 'netflix');
+});
+
+test('5 parallel identical failing lookups share one fetch and all reject', async () => {
+  const { fetchImpl } = countingFetch(() => ({ status: 503, json: {} }), 20);
+  const jw = createJustWatch({ http: createHttp({ fetchImpl, timeoutMs: 1000 }), cache: createCache() });
+  const settled = await Promise.allSettled(Array.from({ length: 5 }, () => jw.findTitle(lookup('tt1'))));
+  assert.deepEqual(settled.map((r) => r.status), Array(5).fill('rejected'));
+  assert.equal(fetchImpl.calls.length, 1);
+});
+
+test('5 parallel listPackages for the same country share one fetch', async () => {
+  const { fetchImpl } = countingFetch(() => fixture('jw-packages-ar.json'), 20);
+  const jw = createJustWatch({ http: createHttp({ fetchImpl, timeoutMs: 1000 }), cache: createCache() });
+  const all = await Promise.all(Array.from({ length: 5 }, (_, i) => jw.listPackages(i % 2 ? 'ar' : 'AR')));
+  assert.equal(fetchImpl.calls.length, 1);
+  assert.equal(all[0].length, 4);
+  await jw.listPackages('BR');
+  assert.equal(fetchImpl.calls.length, 2);
+});
+
+test('mapped offers keep only counted types and only the fields the picker reads', async () => {
+  const full = (technicalName, monetizationType) => ({
+    ...offer(technicalName, monetizationType),
+    presentationType: 'HD',
+    retailPrice: '$9.99',
+    package: { technicalName, clearName: technicalName.toUpperCase(), id: 8, icon: '/icon/8/{profile}' },
+  });
+  const { jw } = setup(
+    createFakeJustWatch([
+      {
+        id: 'ts1',
+        imdbId: 'tt1',
+        objectType: 'SHOW',
+        detail: {
+          offers: [full('a', 'FLATRATE'), full('b', 'RENT'), full('c', 'BUY'), full('d', 'ADS'), full('e', 'FREE'), null],
+          seasons: [
+            {
+              content: { seasonNumber: 1 },
+              episodes: [{ content: { episodeNumber: 1, originalReleaseDate: '2020-01-01' }, offers: [full('f', 'RENT'), full('g', 'FLATRATE')] }],
+            },
+          ],
+        },
+      },
+    ]),
+  );
+  const title = await jw.findTitle({ imdbId: 'tt1', objectType: 'SHOW', terms: ['x'], country: 'AR' });
+  assert.deepEqual(title.offers.map((o) => o.monetizationType), ['FLATRATE', 'ADS', 'FREE']);
+  for (const o of [...title.offers, ...title.seasons[0].episodes[0].offers]) {
+    assert.deepEqual(Object.keys(o).sort(), ['deeplinkURL', 'monetizationType', 'package', 'standardWebURL']);
+    assert.deepEqual(Object.keys(o.package).sort(), ['clearName', 'technicalName']);
+  }
+  assert.deepEqual(title.seasons[0].episodes[0].offers.map((o) => o.package.technicalName), ['g']);
+});
+
+test('the title cache holds at most 300 entries and does not touch the shared cache', async () => {
+  const { jw, fetchImpl, cache } = setup(() => titlesResponse());
+  for (let i = 0; i < 301; i++) await jw.findTitle(lookup(`tt${i}`));
+  assert.equal(fetchImpl.calls.length, 301);
+  await jw.findTitle(lookup('tt300')); // newest is still cached
+  assert.equal(fetchImpl.calls.length, 301);
+  await jw.findTitle(lookup('tt0')); // oldest was evicted
+  assert.equal(fetchImpl.calls.length, 302);
+  assert.equal(cache.get('title:AR:MOVIE:tt300'), undefined);
+});
+
+test('null season and episode content is skipped, not a crash', async () => {
+  const { jw } = setup(
+    createFakeJustWatch([
+      {
+        id: 'ts1',
+        imdbId: 'tt1',
+        objectType: 'SHOW',
+        detail: {
+          offers: [],
+          seasons: [
+            { content: null, episodes: [{ content: { episodeNumber: 1 }, offers: [] }] },
+            { content: { seasonNumber: null }, episodes: [] },
+            {
+              content: { seasonNumber: 2 },
+              episodes: [
+                { content: null, offers: [] },
+                { content: { episodeNumber: null }, offers: [] },
+                { content: { episodeNumber: 3, originalReleaseDate: '2020-01-02' }, offers: [offer('netflix')] },
+              ],
+            },
+            null,
+          ],
+        },
+      },
+    ]),
+  );
+  const title = await jw.findTitle({ imdbId: 'tt1', objectType: 'SHOW', terms: ['x'], country: 'AR' });
+  assert.deepEqual(
+    title.seasons.map((s) => [s.number, s.episodes.map((e) => e.number)]),
+    [[2, [3]]],
+  );
+});
+
+test('a detail node that comes back null is an error, never a cached empty hit', async () => {
+  let t = 0;
+  let ghost = true;
+  const world = createFakeJustWatch([lionKing('tm1', 'tt1', [offer('netflix')])]);
+  const { jw, fetchImpl } = setup(
+    (req) => (ghost && req.body.query.includes('node(id') ? { data: { node: null } } : world(req)),
+    { now: () => t },
+  );
+  await assert.rejects(jw.findTitle(lookup('tt1')), /no node/i);
+  ghost = false;
+  t = FAILURE_TTL + 1; // only the brief failure entry could be in the way
+  const title = await jw.findTitle(lookup('tt1'));
+  assert.equal(title.offers[0].package.technicalName, 'netflix');
+  assert.equal(fetchImpl.calls.length, 4);
 });
