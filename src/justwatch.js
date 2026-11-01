@@ -1,3 +1,5 @@
+import { displayName } from './names.js';
+
 const ENDPOINT = 'https://apis.justwatch.com/graphql';
 const ICON_HOST = 'https://images.justwatch.com';
 const KEEP = new Set(['FLATRATE', 'FREE', 'ADS']);
@@ -123,7 +125,7 @@ export function createJustWatch({ http, cache, ttl = {} }) {
       .filter((p) => (p.monetizationTypes ?? []).some((m) => KEEP.has(m)))
       .map((p) => ({
         id: p.technicalName,
-        name: p.clearName,
+        name: displayName(p.clearName),
         icon: typeof p.icon === 'string' && p.icon.startsWith('/') ? ICON_HOST + p.icon : null,
       }));
     cache.set(key, list, packagesTtl);

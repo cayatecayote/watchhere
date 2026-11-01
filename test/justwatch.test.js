@@ -285,6 +285,19 @@ test('listPackages keeps subscription and free services only', async () => {
   ]);
 });
 
+test('listPackages names services the way the stream rows do', async () => {
+  const { jw } = setup(() => ({
+    data: {
+      packages: [
+        { technicalName: 'disneyplus', clearName: 'Disney Plus', monetizationTypes: ['FLATRATE'], icon: null },
+        { technicalName: 'amazonprimevideo', clearName: 'Amazon Prime Video', monetizationTypes: ['FLATRATE'], icon: null },
+        { technicalName: 'paramountplus', clearName: 'Paramount Plus', monetizationTypes: ['FLATRATE'], icon: null },
+      ],
+    },
+  }));
+  assert.deepEqual((await jw.listPackages('AR')).map((p) => p.name), ['Disney+', 'Prime Video', 'Paramount+']);
+});
+
 test('listPackages caches per country', async () => {
   const { jw, fetchImpl } = setup(() => fixture('jw-packages-ar.json'));
   await jw.listPackages('AR');

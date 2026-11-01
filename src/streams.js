@@ -1,13 +1,9 @@
 import { buildLink } from './links.js';
 import { t } from './i18n.js';
+import { displayName } from './names.js';
 
 const COUNTED = new Set(['FLATRATE', 'FREE', 'ADS']);
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DISPLAY_NAMES = {
-  'Disney Plus': 'Disney+',
-  'Amazon Prime Video': 'Prime Video',
-  'Paramount Plus': 'Paramount+',
-};
 const DATE = /^(\d{4})-(\d{2})-(\d{2})/;
 const EPISODE_SUFFIX = /:(\d+):(\d+)$/;
 
@@ -81,7 +77,7 @@ export function createStreams({ titles, justWatch, timeoutMs = 5000 }) {
     for (const service of user.services) {
       const hit = pick(episode, service) ?? pick(jw.offers, service);
       if (!hit) continue;
-      const name = DISPLAY_NAMES[hit.clearName] ?? hit.clearName;
+      const name = displayName(hit.clearName);
       const key = hit.link.kind === 'play' ? 'play' : 'open';
       (hit.link.kind === 'play' ? plays : pages).push({
         name,

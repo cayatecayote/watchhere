@@ -94,3 +94,17 @@ test('COUNTRIES has lowercase codes, both names, no duplicates, and the required
   const required = 'ar bo br cl co cr ec sv gt hn mx ni pa py pe do uy ve us ca es pt fr de it gb ie nl be at ch pl se no dk fi au nz jp kr in'.split(' ');
   for (const code of required) assert.ok(codes.includes(code), code);
 });
+
+test('the default country comes from the server config, and a user config still wins', () => {
+  const custom = createPage({ defaultCountry: 'uy' });
+  assert.equal(blobOf(custom.render(null, 'es')).country, 'uy');
+  assert.equal(blobOf(custom.render(parseUserConfig('br-es-netflix'), 'es')).country, 'br');
+  assert.equal(blobOf(createPage().render(null, 'es')).country, 'ar');
+});
+
+test('the page script uses a function replacer for names and only reports Copied on success', () => {
+  const html = page.render(null, 'en');
+  assert.ok(!html.includes(".replace('{service}', nameOf(id))"));
+  assert.ok(html.includes(".replace('{service}', () => nameOf(id))"));
+  assert.ok(html.includes('await copyText(url)'));
+});

@@ -16,7 +16,7 @@ const justWatch = createJustWatch({ http, cache });
 const titles = createTitles({ http, cache, tmdbKey: cfg.tmdbKey });
 const streams = createStreams({ titles, justWatch, timeoutMs: cfg.streamTimeoutMs });
 
-const app = createApp({ streams, justWatch, page: createPage(), cfg, logger: console });
+const app = createApp({ streams, justWatch, page: createPage({ defaultCountry: cfg.defaults.country }), cfg, logger: console });
 
 createServer(app).listen(cfg.port, () => {
   console.log(`WatchHere listening on :${cfg.port}`);

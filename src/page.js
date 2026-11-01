@@ -1,7 +1,7 @@
 import { COUNTRIES } from './countries.js';
 import { pageStrings, t } from './i18n.js';
 
-const DEFAULT_COUNTRY = 'ar';
+const FALLBACK_COUNTRY = 'ar';
 
 /** @param {unknown} s */
 function esc(s) {
@@ -234,7 +234,7 @@ function client() {
           'li',
           { class: 'prow', 'data-flip': 'p:' + id },
           make('span', { class: 'num', text: String(i + 1) }),
-          make('span', { class: 'label', text: boot.play[state.lang].replace('{service}', nameOf(id)) }),
+          make('span', { class: 'label', text: boot.play[state.lang].replace('{service}', () => nameOf(id)) }),
           make('span', { class: 'play', html: ICONS.play }),
         ),
       ),
@@ -392,6 +392,22 @@ function client() {
     }
   }
 
+  /** @returns {Promise<boolean>} whether the text reached the clipboard */
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Plain-http LAN installs have no Clipboard API: fall back to selection.
+      try {
+        $('url').select();
+        return document.execCommand('copy');
+      } catch {
+        return false;
+      }
+    }
+  }
+
   // --- events ---------------------------------------------------------------
   $('country').addEventListener('change', (e) => {
     state.country = e.target.value;
@@ -460,12 +476,11 @@ function client() {
   $('copy').addEventListener('click', async () => {
     const url = $('url').value;
     if (!url) return;
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      // Plain-http LAN installs have no Clipboard API: fall back to selection.
+    if (!(await copyText(url))) {
+      // Nothing worked: leave the link selected so it can be copied by hand.
+      $('url').focus();
       $('url').select();
-      document.execCommand('copy');
+      return;
     }
     $('copy').textContent = tr('page_copied');
     clearTimeout(copiedTimer);
@@ -484,7 +499,7 @@ function client() {
  * The configure page: one self-contained HTML string (inline CSS and JS).
  * @returns {{ render(user: import('./userConfig.js').UserConfig | null, lang: 'en' | 'es'): string }}
  */
-export function createPage() {
+export function createPage({ defaultCountry = FALLBACK_COUNTRY } = {}) {
   const strings = { en: pageStrings('en'), es: pageStrings('es') };
   const play = { en: t('en', 'play'), es: t('es', 'play') };
 
@@ -493,7 +508,7 @@ export function createPage() {
       const pageLang = user ? user.lang : lang === 'es' ? 'es' : 'en';
       const s = strings[pageLang];
       const boot = {
-        country: user ? user.country : DEFAULT_COUNTRY,
+        country: user ? user.country : defaultCountry,
         lang: pageLang,
         services: user ? user.services : [],
         countries: COUNTRIES,
