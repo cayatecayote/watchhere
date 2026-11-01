@@ -26,8 +26,9 @@ WatchHub (the official Stremio add-on) is the obvious tool for this, but it fall
   only; no rent or buy.
 - Services that only have a page link (no play link) are still answered, but always **after** every play link, so a
   page link never wins autoplay over a link that plays.
-- Netflix only exposes a show-level id, so a Netflix row opens the show (Netflix resumes where you left off). For
-  other services, if JustWatch's episode doesn't agree with Cinemeta's (air date or numbering), it falls back to the
+- Netflix episodes link to their own `/watch/<episodeId>` (taken from JustWatch's Android link). When JustWatch has
+  no distinct episode id, the Netflix row opens the show instead (Netflix resumes where you left off). For every
+  service, if JustWatch's episode doesn't agree with Cinemeta's (air date or numbering), it falls back to the
   show link rather than risk the wrong episode.
 - No catalogs, no scraping, no torrents, no debrid, no account and no secret to run it.
 - It never answers an error: if JustWatch is slow or down, the list is empty and your client moves on.

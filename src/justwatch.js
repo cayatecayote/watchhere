@@ -8,6 +8,11 @@ const KEEP = new Set(['FLATRATE', 'FREE', 'ADS']);
 const OFFER_FIELDS =
   'monetizationType standardWebURL deeplinkURL(platform: ANDROID_TV) package { technicalName clearName }';
 
+// Per-episode ids live on the ANDROID platform only (ANDROID_TV has just the
+// show id, Netflix). Asked for episode offers only: at show level the same
+// field would hand back the first episode.
+const EPISODE_OFFER_FIELDS = `${OFFER_FIELDS} episodeURL: deeplinkURL(platform: ANDROID)`;
+
 // JustWatch rejects one big query (complexity 668450 vs a 350000 limit), so a
 // lookup is two steps: a light search to find the node, then a detail query
 // for that single node.
@@ -25,7 +30,7 @@ const DETAIL_QUERY = `query($id: ID!, $country: Country!) {
       content(country: $country, language: en) { seasonNumber }
       episodes {
         content(country: $country, language: en) { episodeNumber originalReleaseDate }
-        offers(country: $country, platform: WEB) { ${OFFER_FIELDS} }
+        offers(country: $country, platform: WEB) { ${EPISODE_OFFER_FIELDS} }
       }
     } }
   }
@@ -69,6 +74,7 @@ function trimOffers(list) {
       monetizationType: o.monetizationType,
       standardWebURL: o.standardWebURL ?? null,
       deeplinkURL: o.deeplinkURL ?? null,
+      ...(typeof o.episodeURL === 'string' && { episodeURL: o.episodeURL }),
       package: { technicalName: o.package?.technicalName, clearName: o.package?.clearName },
     });
   }

@@ -92,3 +92,39 @@ test('tvLink refuses a link with no host', () => {
   assert.equal(tvLink('http:///path'), null);
   assert.equal(tvLink('intent:///path#Intent;scheme=https;end'), null);
 });
+
+const netflixEpisode = (extra = {}) => ({
+  monetizationType: 'FLATRATE',
+  standardWebURL: 'https://www.netflix.com/title/70143836',
+  deeplinkURL: 'intent://www.netflix.com/watch/70143836#Intent;launchFlags=0x00800000;scheme=https;package=com.netflix.ninja;end',
+  episodeURL: 'https://www.netflix.com/watch/70196263',
+  package: { technicalName: 'netflix', clearName: 'Netflix' },
+  ...extra,
+});
+
+test('a Netflix episode offer links to its own /watch/<episodeId>', () => {
+  assert.deepEqual(buildLink(netflixEpisode()), { url: 'https://www.netflix.com/watch/70196263', kind: 'play' });
+});
+
+test('Netflix falls back to the show link when the episode link is missing, equal to the show one or not a watch URL', () => {
+  const show = { url: 'https://www.netflix.com/watch/70143836', kind: 'play' };
+  assert.deepEqual(buildLink(netflixEpisode({ episodeURL: undefined })), show);
+  assert.deepEqual(buildLink(netflixEpisode({ episodeURL: null })), show);
+  assert.deepEqual(buildLink(netflixEpisode({ episodeURL: 'https://www.netflix.com/watch/70143836' })), show);
+  assert.deepEqual(buildLink(netflixEpisode({ episodeURL: 'https://www.netflix.com/title/70196263' })), show);
+  assert.deepEqual(buildLink(netflixEpisode({ episodeURL: 'https://www.netflix.com/watch/abc' })), show);
+  assert.deepEqual(buildLink(netflixEpisode({ episodeURL: 'nflx://www.netflix.com/watch/70196263' })), show);
+});
+
+test('an episode link that is not a Netflix watch URL never replaces another service link', () => {
+  assert.deepEqual(
+    buildLink({
+      monetizationType: 'FLATRATE',
+      deeplinkURL: 'intent://www.disneyplus.com/play/x#Intent;scheme=https;end',
+      standardWebURL: 'https://www.disneyplus.com/series/x',
+      episodeURL: 'https://www.disneyplus.com/play/y',
+      package: { technicalName: 'disneyplus', clearName: 'Disney Plus' },
+    }),
+    { url: 'https://www.disneyplus.com/play/x', kind: 'play' },
+  );
+});

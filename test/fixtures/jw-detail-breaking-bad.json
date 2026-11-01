@@ -1,0 +1,87 @@
+{
+  "data": {
+    "node": {
+      "offers": [
+        {
+          "monetizationType": "FLATRATE",
+          "standardWebURL": "https://www.netflix.com/title/70143836",
+          "deeplinkURL": "intent://www.netflix.com/watch/70143836#Intent;launchFlags=0x00800000;scheme=https;package=com.netflix.ninja;S.source=30;end",
+          "package": {
+            "technicalName": "netflix",
+            "clearName": "Netflix"
+          }
+        }
+      ],
+      "seasons": [
+        {
+          "content": {
+            "seasonNumber": 1
+          },
+          "episodes": [
+            {
+              "content": {
+                "episodeNumber": 1,
+                "originalReleaseDate": "2008-01-20"
+              },
+              "offers": [
+                {
+                  "monetizationType": "FLATRATE",
+                  "standardWebURL": "https://www.netflix.com/title/70143836",
+                  "deeplinkURL": "intent://www.netflix.com/watch/70143836#Intent;launchFlags=0x00800000;scheme=https;package=com.netflix.ninja;S.source=30;end",
+                  "package": {
+                    "technicalName": "netflix",
+                    "clearName": "Netflix"
+                  },
+                  "episodeURL": "https://www.netflix.com/watch/70196252"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "content": {
+            "seasonNumber": 2
+          },
+          "episodes": [
+            {
+              "content": {
+                "episodeNumber": 5,
+                "originalReleaseDate": "2009-04-05"
+              },
+              "offers": [
+                {
+                  "monetizationType": "FLATRATE",
+                  "standardWebURL": "https://www.netflix.com/title/70143836",
+                  "deeplinkURL": "intent://www.netflix.com/watch/70143836#Intent;launchFlags=0x00800000;scheme=https;package=com.netflix.ninja;S.source=30;end",
+                  "package": {
+                    "technicalName": "netflix",
+                    "clearName": "Netflix"
+                  },
+                  "episodeURL": "https://www.netflix.com/watch/70196263"
+                }
+              ]
+            },
+            {
+              "content": {
+                "episodeNumber": 6,
+                "originalReleaseDate": "2009-04-12"
+              },
+              "offers": [
+                {
+                  "monetizationType": "FLATRATE",
+                  "standardWebURL": "https://www.netflix.com/title/70143836",
+                  "deeplinkURL": "intent://www.netflix.com/watch/70143836#Intent;launchFlags=0x00800000;scheme=https;package=com.netflix.ninja;S.source=30;end",
+                  "package": {
+                    "technicalName": "netflix",
+                    "clearName": "Netflix"
+                  },
+                  "episodeURL": "https://www.netflix.com/watch/70196264"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -9,6 +9,7 @@ const INTENT = /^intent:\/\/([^#]*)#Intent;(.*)$/is;
  *   monetizationType?: string,
  *   standardWebURL?: string | null,
  *   deeplinkURL?: string | null,
+ *   episodeURL?: string | null,
  *   package?: { technicalName?: string, clearName?: string },
  * }} JwOffer
  * @typedef {{ url: string, kind: 'play' | 'page' }} LinkResult
@@ -62,12 +63,27 @@ function justWatchBuilder(offer) {
   return null;
 }
 
+const NETFLIX_WATCH = /^https:\/\/www\.netflix\.com\/watch\/\d+$/;
+
+/**
+ * Netflix episodes: JustWatch's ANDROID_TV link only has the show id, but its
+ * ANDROID link (`episodeURL`) is a `/watch/<episodeId>`. Used only when it is
+ * a real watch URL that differs from the show's; otherwise the show link wins.
+ * @param {JwOffer} offer
+ * @returns {LinkResult | null}
+ */
+function netflixEpisodeBuilder(offer) {
+  const episode = tvLink(offer.episodeURL);
+  if (!episode || !NETFLIX_WATCH.test(episode) || episode === tvLink(offer.deeplinkURL)) return null;
+  return { url: episode, kind: 'play' };
+}
+
 /**
  * Ordered list of `(offer) => LinkResult | null`; the first hit wins.
  * Service-specific builders get prepended here.
  * @type {Array<(offer: JwOffer) => LinkResult | null>}
  */
-export const BUILDERS = [justWatchBuilder];
+export const BUILDERS = [netflixEpisodeBuilder, justWatchBuilder];
 
 /**
  * @param {JwOffer} offer

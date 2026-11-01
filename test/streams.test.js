@@ -1,6 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createStreams } from '../src/streams.js';
+import { createHttp } from '../src/http.js';
+import { createCache } from '../src/cache.js';
+import { createJustWatch } from '../src/justwatch.js';
+import { createFakeFetch } from './helpers/fakeFetch.js';
 
 const offer = (tech, clear, extra = {}) => ({
   monetizationType: 'FLATRATE',
@@ -300,4 +305,71 @@ test('lookup reports upstream=ok, fail or timeout alongside the rows', async () 
     user(['disneyplus']),
   );
   assert.deepEqual(slow, { rows: [], upstream: 'timeout' });
+});
+
+// --- Netflix per-episode links, through the real JustWatch mapper ---
+
+const fixture = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
+
+/** Breaking Bad, as recorded from JustWatch AR; `edit(detail)` can doctor the detail answer. */
+function breakingBad(edit = () => {}) {
+  const detail = fixture('jw-detail-breaking-bad.json');
+  edit(detail.data.node);
+  const fetchImpl = createFakeFetch(({ body }) =>
+    body.query.includes('popularTitles') ? fixture('jw-search-breaking-bad.json') : detail,
+  );
+  const justWatch = createJustWatch({ http: createHttp({ fetchImpl, timeoutMs: 1000 }), cache: createCache() });
+  const title = {
+    imdbId: 'tt0903747',
+    objectType: 'SHOW',
+    terms: ['Breaking Bad'],
+    episodes: new Map([['1:1', '2008-01-20'], ['2:5', '2009-04-05'], ['2:6', '2009-04-12']]),
+  };
+  return createStreams({ titles: { resolve: async () => title }, justWatch }).getStreams;
+}
+const SHOW_LINK = 'https://www.netflix.com/watch/70143836';
+const bbUrl = async (getStreams, season, episode, services = ['netflix']) =>
+  (await getStreams({ type: 'series', id: `tt0903747:${season}:${episode}`, season, episode }, user(services)))[0]
+    ?.externalUrl;
+
+test('a Netflix episode gets its own /watch/<episodeId>', async () => {
+  const getStreams = breakingBad();
+  assert.equal(await bbUrl(getStreams, 2, 5), 'https://www.netflix.com/watch/70196263');
+  assert.equal(await bbUrl(getStreams, 2, 6), 'https://www.netflix.com/watch/70196264');
+  assert.equal(await bbUrl(getStreams, 1, 1), 'https://www.netflix.com/watch/70196252');
+});
+
+test('Netflix falls back to the show link when the ANDROID link is missing or equals the show one', async () => {
+  const noAndroid = breakingBad((node) => {
+    for (const e of node.seasons[1].episodes) for (const o of e.offers) delete o.episodeURL;
+  });
+  assert.equal(await bbUrl(noAndroid, 2, 5), SHOW_LINK);
+
+  const sameAsShow = breakingBad((node) => {
+    for (const e of node.seasons[1].episodes) for (const o of e.offers) o.episodeURL = SHOW_LINK;
+  });
+  assert.equal(await bbUrl(sameAsShow, 2, 5), SHOW_LINK);
+});
+
+test('Netflix keeps the show link when the episode does not match Cinemeta, and for the show itself', async () => {
+  const getStreams = breakingBad();
+  assert.equal(await bbUrl(getStreams, 2, 9), SHOW_LINK);
+  assert.equal(
+    (await getStreams({ type: 'series', id: 'tt0903747' }, user(['netflix'])))[0].externalUrl,
+    SHOW_LINK,
+  );
+});
+
+test('another service is unaffected by the episode link of a Netflix offer', async () => {
+  const getStreams = breakingBad((node) => {
+    const disneyEp = (ep) => ({
+      monetizationType: 'FLATRATE',
+      standardWebURL: 'https://www.disneyplus.com/series/x',
+      deeplinkURL: 'intent://www.disneyplus.com/play/show#Intent;scheme=https;end',
+      episodeURL: `https://www.disneyplus.com/play/${ep}`,
+      package: { technicalName: 'disneyplus', clearName: 'Disney Plus' },
+    });
+    node.seasons[1].episodes[0].offers.push(disneyEp('ep5'));
+  });
+  assert.equal(await bbUrl(getStreams, 2, 5, ['disneyplus']), 'https://www.disneyplus.com/play/show');
 });

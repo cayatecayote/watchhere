@@ -561,3 +561,15 @@ test('a detail node that comes back null is an error, never a cached empty hit',
   assert.equal(title.offers[0].package.technicalName, 'netflix');
   assert.equal(fetchImpl.calls.length, 4);
 });
+
+test('only episode offers ask for the per-episode ANDROID link, and it is kept on the offer', async () => {
+  const { jw, fetchImpl } = setup(({ body }) =>
+    body.query.includes('popularTitles') ? fixture('jw-search-breaking-bad.json') : fixture('jw-detail-breaking-bad.json'),
+  );
+  const title = await jw.findTitle({ imdbId: 'tt0903747', objectType: 'SHOW', terms: ['Breaking Bad'], country: 'AR' });
+  const { query } = detailCalls(fetchImpl)[0].body;
+  assert.equal(query.match(/deeplinkURL\(platform: ANDROID\)/g).length, 1);
+  assert.match(query, /episodes \{[^]*episodeURL: deeplinkURL\(platform: ANDROID\)/);
+  assert.equal(title.offers[0].episodeURL, undefined);
+  assert.equal(title.seasons[1].episodes[0].offers[0].episodeURL, 'https://www.netflix.com/watch/70196263');
+});
