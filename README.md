@@ -35,7 +35,7 @@ WatchHub (the official Stremio add-on) is the obvious tool for this, but it fall
 ## Install with Docker
 
 ```sh
-git clone <this repo> watchhere && cd watchhere
+git clone https://github.com/cayatecayote/watchhere.git watchhere && cd watchhere
 cp docker-compose.example.yml docker-compose.yml
 docker compose up -d --build
 curl http://localhost:7020/health        # {"ok":true,"version":"0.1.0"}
@@ -198,7 +198,7 @@ WatchHub (el add-on oficial de Stremio) es lo obvio, pero se queda corto en tres
 ## Instalar con Docker
 
 ```sh
-git clone <este repo> watchhere && cd watchhere
+git clone https://github.com/cayatecayote/watchhere.git watchhere && cd watchhere
 cp docker-compose.example.yml docker-compose.yml
 docker compose up -d --build
 curl http://localhost:7020/health        # {"ok":true,"version":"0.1.0"}
