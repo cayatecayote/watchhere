@@ -45,7 +45,7 @@ Or without Compose:
 
 ```sh
 docker build -t watchhere .
-docker run -d --name watchhere --restart unless-stopped -p 7020:7020 watchhere
+docker run -d --init --name watchhere --restart unless-stopped -p 7020:7020 watchhere
 ```
 
 Without Docker you need Node.js 22 or newer and no `npm install` (there are no dependencies): `npm start`.
@@ -93,8 +93,8 @@ Paste the install link in Nuvio's add-ons. The manifest name is always "WatchHer
 can pick it by name.
 
 WatchHere rows **autoplay** only in a Nuvio build whose autoplay accepts external links, and only when WatchHere is
-explicitly picked in the autoplay add-on list. That change has been proposed to Nuvio; until it lands in the build you
-use, the WatchHere row is a normal row that you tap by hand (it still opens the title in the right app).
+picked by name in the autoplay add-on list. In any other Nuvio build the WatchHere row is a normal row that you tap by
+hand (it still opens the title in the right app).
 
 ### Stremio
 
@@ -202,7 +202,7 @@ Sin Compose:
 
 ```sh
 docker build -t watchhere .
-docker run -d --name watchhere --restart unless-stopped -p 7020:7020 watchhere
+docker run -d --init --name watchhere --restart unless-stopped -p 7020:7020 watchhere
 ```
 
 Sin Docker alcanza con Node.js 22 o más nuevo y no hace falta `npm install` (no tiene dependencias): `npm start`.
@@ -250,9 +250,8 @@ Pegá el link de instalación en los add-ons de Nuvio. El nombre del manifest es
 configuración, así que lo podés elegir por nombre.
 
 Las filas de WatchHere hacen **autoplay** solo en un build de Nuvio cuyo autoplay acepte links externos, y solo si
-WatchHere está elegido explícitamente en la lista de add-ons de autoplay. Ese cambio está propuesto a Nuvio; hasta que
-llegue al build que uses, la fila de WatchHere es una fila común que tocás a mano (igual abre el título en la app
-correcta).
+WatchHere está elegido por nombre en la lista de add-ons de autoplay. En cualquier otro build de Nuvio la fila de
+WatchHere es una fila común que tocás a mano (igual abre el título en la app correcta).
 
 ### Stremio
 

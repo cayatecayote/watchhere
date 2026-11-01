@@ -3,6 +3,7 @@ services:
   watchhere:
     build: .
     container_name: watchhere
+    init: true
     restart: unless-stopped
     ports:
       - "7020:7020"
@@ -12,5 +13,5 @@ services:
       # Used by the install link when no configuration is in the URL:
       # <country>-<en|es>-<service,service,...>  (service = JustWatch technical name)
       DEFAULT_CONFIG: "ar-es-disneyplus,netflix"
-      # Optional. Only needed for tmdb: ids and better localized titles.
+      # Optional. Only used for tmdb: ids (without it they answer nothing).
       # TMDB_API_KEY: ""
