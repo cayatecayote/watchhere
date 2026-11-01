@@ -1,0 +1,16 @@
+# Copy to docker-compose.yml and run: docker compose up -d --build
+services:
+  watchhere:
+    build: .
+    container_name: watchhere
+    restart: unless-stopped
+    ports:
+      - "7020:7020"
+    environment:
+      # Port inside the container (keep in sync with `ports` above).
+      PORT: "7020"
+      # Used by the install link when no configuration is in the URL:
+      # <country>-<en|es>-<service,service,...>  (service = JustWatch technical name)
+      DEFAULT_CONFIG: "ar-es-disneyplus,netflix"
+      # Optional. Only needed for tmdb: ids and better localized titles.
+      # TMDB_API_KEY: ""
