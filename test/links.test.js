@@ -64,3 +64,31 @@ test('BUILDERS is the ordered extension point', () => {
   assert.ok(Array.isArray(BUILDERS));
   assert.ok(BUILDERS.length >= 1);
 });
+
+test('tvLink decodes HTML entities in a passthrough URL (live Paramount+ case)', () => {
+  assert.equal(
+    tvLink(
+      'https://www.paramountplus.com/shows/yellowstone/video/vPXPeC4posOemTL_KvmcbAPhi6j_s7_f/yellowstone-daybreak?searchReferral=&amp;utm_source=publisher',
+    ),
+    'https://www.paramountplus.com/shows/yellowstone/video/vPXPeC4posOemTL_KvmcbAPhi6j_s7_f/yellowstone-daybreak?searchReferral=&utm_source=publisher',
+  );
+  assert.equal(tvLink('https://x.test/a?b=1&#38;c=2&#x26;d=3&quot;&#39;&lt;&gt;'), 'https://x.test/a?b=1&c=2&d=3"\'<>');
+});
+
+test('tvLink decodes entities only once', () => {
+  assert.equal(tvLink('https://x.test/a?b=1&amp;amp;c=2'), 'https://x.test/a?b=1&amp;c=2');
+});
+
+test('tvLink decodes entities in an unwrapped intent query', () => {
+  assert.equal(
+    tvLink('intent://www.paramountplus.com/shows/x?a=1&amp;b=2#Intent;scheme=https;end'),
+    'https://www.paramountplus.com/shows/x?a=1&b=2',
+  );
+});
+
+test('tvLink refuses a link with no host', () => {
+  assert.equal(tvLink('intent://#Intent;scheme=https;end'), null);
+  assert.equal(tvLink('https://'), null);
+  assert.equal(tvLink('http:///path'), null);
+  assert.equal(tvLink('intent:///path#Intent;scheme=https;end'), null);
+});
